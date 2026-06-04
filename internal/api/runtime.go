@@ -16,13 +16,12 @@ type Runtime struct {
 func NewRuntime(cfg *config.Config, infra *infrastructure.Infrastructure) *Runtime {
 	return &Runtime{
 		Infrastructure: &infrastructure.Infrastructure{
-			Agent:      cfg.Agent,
-			Credential: infra.Credential,
-			Lifecycle:  infra.Lifecycle,
-			Logger:     infra.Logger.With("module", "api"),
-			Database:   infra.Database,
-			Storage:    infra.Storage,
-			NewAgent:   infra.NewAgent,
+			Agent:     cfg.Agent,
+			Lifecycle: infra.Lifecycle,
+			Logger:    infra.Logger.With("module", "api"),
+			Database:  infra.Database,
+			Storage:   infra.Storage,
+			NewAgent:  infra.NewAgent,
 		},
 		Pagination: cfg.API.Pagination,
 	}

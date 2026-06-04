@@ -66,7 +66,7 @@ mise run vet       # go vet ./...
 ### Local Infrastructure
 
 ```bash
-docker compose up -d    # PostgreSQL (5432) + Azurite (10000)
+docker compose up -d    # PostgreSQL (5432) + MinIO (9000, console 9001)
 docker compose down     # Stop and remove containers
 ```
 

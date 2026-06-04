@@ -75,15 +75,15 @@ var databaseEnv = &database.Env{
 	MaxIdleConns:    "HERALD_DB_MAX_IDLE_CONNS",
 	ConnMaxLifetime: "HERALD_DB_CONN_MAX_LIFETIME",
 	ConnTimeout:     "HERALD_DB_CONN_TIMEOUT",
-	TokenLifetime:   "HERALD_DB_TOKEN_LIFETIME",
-	TokenScope:      "HERALD_DB_TOKEN_SCOPE",
 }
 
 var storageEnv = &storage.Env{
-	ContainerName:    "HERALD_STORAGE_CONTAINER_NAME",
-	ConnectionString: "HERALD_STORAGE_CONNECTION_STRING",
-	ServiceURL:       "HERALD_STORAGE_SERVICE_URL",
-	MaxListSize:      "HERALD_STORAGE_MAX_LIST_SIZE",
+	Endpoint:    "HERALD_STORAGE_ENDPOINT",
+	AccessKey:   "HERALD_STORAGE_ACCESS_KEY",
+	SecretKey:   "HERALD_STORAGE_SECRET_KEY",
+	UseSSL:      "HERALD_STORAGE_USE_SSL",
+	BucketName:  "HERALD_STORAGE_BUCKET_NAME",
+	MaxListSize: "HERALD_STORAGE_MAX_LIST_SIZE",
 }
 
 // Config is the root configuration for the Herald service.

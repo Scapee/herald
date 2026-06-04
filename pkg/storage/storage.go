@@ -1,4 +1,4 @@
-// Package storage provides blob storage operations with an Azure Blob Storage implementation.
+// Package storage provides blob storage operations with a MinIO implementation.
 package storage
 
 import (
@@ -10,17 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/JaimeStill/herald/pkg/lifecycle"
 )
 
 // MaxListCap is the maximum number of blobs that can be returned in a single list request.
-// This matches Azure Blob Storage's server-side ceiling.
 const MaxListCap int32 = 5000
 
 // BlobMeta contains metadata about a single blob in storage.
@@ -49,7 +45,7 @@ type BlobResult struct {
 
 // System manages blob storage operations and lifecycle coordination.
 type System interface {
-	// Start registers a startup hook that initializes the storage container.
+	// Start registers a startup hook that initializes the storage bucket.
 	Start(lc *lifecycle.Coordinator) error
 
 	// List returns a page of blob metadata filtered by prefix.
@@ -70,180 +66,119 @@ type System interface {
 	Exists(ctx context.Context, key string) (bool, error)
 }
 
-type azure struct {
-	client    *azblob.Client
-	container string
-	logger    *slog.Logger
+type store struct {
+	client *minio.Client
+	bucket string
+	logger *slog.Logger
 }
 
 // New creates a storage system from the given configuration.
-// It validates the connection string and creates the Azure client
+// It validates connection parameters and creates the MinIO client
 // but does not establish a connection until Start is called.
 func New(cfg *Config, logger *slog.Logger) (System, error) {
-	if cfg.ConnectionString == "" {
-		return nil, fmt.Errorf("connection_string required for connection string auth")
-	}
-
-	client, err := azblob.NewClientFromConnectionString(cfg.ConnectionString, nil)
+	client, err := minio.New(cfg.Endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+		Secure: cfg.UseSSL,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create storage client: %w", err)
 	}
 
-	return &azure{
-		client:    client,
-		container: cfg.ContainerName,
-		logger:    logger.With("system", "storage"),
+	return &store{
+		client: client,
+		bucket: cfg.BucketName,
+		logger: logger.With("system", "storage"),
 	}, nil
 }
 
-// NewWithCredential creates a storage system using an Azure token credential.
-// It requires ServiceURL in the config and creates the client via azblob.NewClient.
-// Connection is not established until Start is called.
-func NewWithCredential(cfg *Config, cred azcore.TokenCredential, logger *slog.Logger) (System, error) {
-	if cfg.ServiceURL == "" {
-		return nil, fmt.Errorf("service_url required for credential auth")
-	}
-
-	client, err := azblob.NewClient(cfg.ServiceURL, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create storage client: %w", err)
-	}
-
-	return &azure{
-		client:    client,
-		container: cfg.ContainerName,
-		logger:    logger.With("system", "storage"),
-	}, nil
-}
-
-func (a *azure) Start(lc *lifecycle.Coordinator) error {
-	a.logger.Info("starting storage system")
+func (s *store) Start(lc *lifecycle.Coordinator) error {
+	s.logger.Info("starting storage system")
 
 	lc.OnStartup(func() {
-		_, err := a.client.CreateContainer(lc.Context(), a.container, nil)
+		ctx := lc.Context()
+		exists, err := s.client.BucketExists(ctx, s.bucket)
 		if err != nil {
-			if !bloberror.HasCode(err, bloberror.ContainerAlreadyExists) {
-				a.logger.Error("storage container initialization failed", "error", err)
+			s.logger.Error("storage bucket check failed", "error", err)
+			return
+		}
+
+		if !exists {
+			if err := s.client.MakeBucket(ctx, s.bucket, minio.MakeBucketOptions{}); err != nil {
+				s.logger.Error("storage bucket creation failed", "error", err)
 				return
 			}
 		}
 
-		a.logger.Info("storage container ready", "container", a.container)
+		s.logger.Info("storage bucket ready", "bucket", s.bucket)
 	})
 
 	return nil
 }
 
-func (a *azure) List(
+func (s *store) List(
 	ctx context.Context,
 	prefix string,
 	marker string,
 	maxResults int32,
 ) (*BlobList, error) {
-	containerClient := a.client.ServiceClient().NewContainerClient(a.container)
-
-	opts := &container.ListBlobsFlatOptions{
-		MaxResults: &maxResults,
-	}
-	if prefix != "" {
-		opts.Prefix = &prefix
-	}
-	if marker != "" {
-		opts.Marker = &marker
+	opts := minio.ListObjectsOptions{
+		Prefix:     prefix,
+		StartAfter: marker,
 	}
 
-	pager := containerClient.NewListBlobsFlatPager(opts)
-	if !pager.More() {
-		return &BlobList{Blobs: []BlobMeta{}}, nil
-	}
+	blobs := make([]BlobMeta, 0, maxResults)
+	var nextMarker string
 
-	resp, err := pager.NextPage(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list blobs: %w", err)
-	}
-
-	blobs := make([]BlobMeta, 0, len(resp.Segment.BlobItems))
-	for _, b := range resp.Segment.BlobItems {
-		var meta BlobMeta
-		if b.Name != nil {
-			meta.Name = *b.Name
+	for obj := range s.client.ListObjects(ctx, s.bucket, opts) {
+		if obj.Err != nil {
+			return nil, fmt.Errorf("list blobs: %w", obj.Err)
 		}
-		if b.Properties != nil {
-			if b.Properties.ContentType != nil {
-				meta.ContentType = *b.Properties.ContentType
-			}
-			if b.Properties.ContentLength != nil {
-				meta.ContentLength = *b.Properties.ContentLength
-			}
-			if b.Properties.LastModified != nil {
-				meta.LastModified = *b.Properties.LastModified
-			}
-			if b.Properties.ETag != nil {
-				meta.ETag = string(*b.Properties.ETag)
-			}
-			if b.Properties.CreationTime != nil {
-				meta.CreatedAt = *b.Properties.CreationTime
-			}
+		if int32(len(blobs)) >= maxResults {
+			nextMarker = obj.Key
+			break
 		}
-		blobs = append(blobs, meta)
+		blobs = append(blobs, BlobMeta{
+			Name:          obj.Key,
+			ContentType:   obj.ContentType,
+			ContentLength: obj.Size,
+			LastModified:  obj.LastModified,
+			ETag:          strings.Trim(obj.ETag, `"`),
+		})
 	}
 
-	result := &BlobList{Blobs: blobs}
-	if resp.NextMarker != nil && *resp.NextMarker != "" {
-		result.NextMarker = *resp.NextMarker
-	}
-	return result, nil
+	return &BlobList{Blobs: blobs, NextMarker: nextMarker}, nil
 }
 
-func (a *azure) Find(ctx context.Context, key string) (*BlobMeta, error) {
+func (s *store) Find(ctx context.Context, key string) (*BlobMeta, error) {
 	if err := validateKey(key); err != nil {
 		return nil, err
 	}
 
-	blobClient := a.client.
-		ServiceClient().
-		NewContainerClient(a.container).
-		NewBlobClient(key)
-
-	resp, err := blobClient.GetProperties(ctx, nil)
+	info, err := s.client.StatObject(ctx, s.bucket, key, minio.StatObjectOptions{})
 	if err != nil {
-		if bloberror.HasCode(err, bloberror.BlobNotFound) {
+		if isNotFound(err) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get blob properties %s: %w", key, err)
 	}
 
-	meta := &BlobMeta{Name: key}
-	if resp.ContentType != nil {
-		meta.ContentType = *resp.ContentType
-	}
-	if resp.ContentLength != nil {
-		meta.ContentLength = *resp.ContentLength
-	}
-	if resp.LastModified != nil {
-		meta.LastModified = *resp.LastModified
-	}
-	if resp.ETag != nil {
-		meta.ETag = string(*resp.ETag)
-	}
-	if resp.CreationTime != nil {
-		meta.CreatedAt = *resp.CreationTime
-	}
-	return meta, nil
+	return &BlobMeta{
+		Name:          key,
+		ContentType:   info.ContentType,
+		ContentLength: info.Size,
+		LastModified:  info.LastModified,
+		ETag:          strings.Trim(info.ETag, `"`),
+	}, nil
 }
 
-func (a *azure) Upload(ctx context.Context, key string, reader io.Reader, contentType string) error {
+func (s *store) Upload(ctx context.Context, key string, reader io.Reader, contentType string) error {
 	if err := validateKey(key); err != nil {
 		return err
 	}
 
-	opts := &azblob.UploadStreamOptions{
-		HTTPHeaders: &blob.HTTPHeaders{
-			BlobContentType: &contentType,
-		},
-	}
-
-	_, err := a.client.UploadStream(ctx, a.container, key, reader, opts)
+	_, err := s.client.PutObject(ctx, s.bucket, key, reader, -1, minio.PutObjectOptions{
+		ContentType: contentType,
+	})
 	if err != nil {
 		return fmt.Errorf("upload blob %s: %w", key, err)
 	}
@@ -251,69 +186,78 @@ func (a *azure) Upload(ctx context.Context, key string, reader io.Reader, conten
 	return nil
 }
 
-func (a *azure) Download(ctx context.Context, key string) (*BlobResult, error) {
+func (s *store) Download(ctx context.Context, key string) (*BlobResult, error) {
 	if err := validateKey(key); err != nil {
 		return nil, err
 	}
 
-	resp, err := a.client.DownloadStream(ctx, a.container, key, nil)
+	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		if bloberror.HasCode(err, bloberror.BlobNotFound) {
+		if isNotFound(err) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("download blob %s: %w", key, err)
 	}
 
-	result := &BlobResult{
-		BlobMeta: BlobMeta{Name: key},
-		Body:     resp.Body,
+	info, err := obj.Stat()
+	if err != nil {
+		obj.Close()
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("stat blob %s: %w", key, err)
 	}
 
-	if resp.ContentType != nil {
-		result.ContentType = *resp.ContentType
-	}
-	if resp.ContentLength != nil {
-		result.ContentLength = *resp.ContentLength
-	}
-
-	return result, nil
+	return &BlobResult{
+		BlobMeta: BlobMeta{
+			Name:          key,
+			ContentType:   info.ContentType,
+			ContentLength: info.Size,
+		},
+		Body: obj,
+	}, nil
 }
 
-func (a *azure) Delete(ctx context.Context, key string) error {
+func (s *store) Delete(ctx context.Context, key string) error {
 	if err := validateKey(key); err != nil {
 		return err
 	}
 
-	_, err := a.client.DeleteBlob(ctx, a.container, key, nil)
+	// Verify existence first so we can return ErrNotFound consistently.
+	_, err := s.client.StatObject(ctx, s.bucket, key, minio.StatObjectOptions{})
 	if err != nil {
-		if bloberror.HasCode(err, bloberror.BlobNotFound) {
+		if isNotFound(err) {
 			return ErrNotFound
 		}
+		return fmt.Errorf("delete blob %s: %w", key, err)
+	}
+
+	if err := s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf("delete blob %s: %w", key, err)
 	}
 
 	return nil
 }
 
-func (a *azure) Exists(ctx context.Context, key string) (bool, error) {
+func (s *store) Exists(ctx context.Context, key string) (bool, error) {
 	if err := validateKey(key); err != nil {
 		return false, err
 	}
 
-	blobClient := a.client.
-		ServiceClient().
-		NewContainerClient(a.container).
-		NewBlobClient(key)
-
-	_, err := blobClient.GetProperties(ctx, nil)
+	_, err := s.client.StatObject(ctx, s.bucket, key, minio.StatObjectOptions{})
 	if err != nil {
-		if bloberror.HasCode(err, bloberror.BlobNotFound) {
+		if isNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("check blob existence %s: %w", key, err)
 	}
 
 	return true, nil
+}
+
+func isNotFound(err error) bool {
+	resp := minio.ToErrorResponse(err)
+	return resp.Code == "NoSuchKey" || resp.Code == "NoSuchBucket"
 }
 
 func validateKey(key string) error {

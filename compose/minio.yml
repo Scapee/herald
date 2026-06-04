@@ -1,0 +1,16 @@
+services:
+  minio:
+    image: minio/minio
+    container_name: herald-minio
+    environment:
+      MINIO_ROOT_USER: heraldstore
+      MINIO_ROOT_PASSWORD: heraldstorepass
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - herald-minio:/data
+    command: server /data --console-address ":9001"
+
+volumes:
+  herald-minio:

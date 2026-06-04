@@ -25,8 +25,11 @@
     "conn_timeout": "5s"
   },
   "storage": {
-    "container_name": "documents",
-    "connection_string": "DefaultEndpointsProtocol=http;AccountName=heraldstore;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/heraldstore;"
+    "endpoint": "localhost:9000",
+    "access_key": "heraldstore",
+    "secret_key": "heraldstorepass",
+    "use_ssl": false,
+    "bucket_name": "documents"
   },
   "api": {
     "base_path": "/api",
@@ -46,25 +49,20 @@
   "agent": {
     "name": "herald-classifier",
     "provider": {
-      "name": "azure",
-      "base_url": "https://herald-ai-prod.cognitiveservices.azure.com/openai",
+      "name": "openai",
+      "base_url": "https://api.openai.com/v1",
       "options": {
-        "deployment": "gpt-5.2",
-        "api_version": "2025-04-01-preview",
-        "auth_type": "api_key",
-        "token": "token"
+        "api_key": ""
       }
     },
     "model": {
-      "name": "gpt-5.2",
+      "name": "gpt-4o",
       "capabilities": {
         "chat": {
-          "max_completion_tokens": 4096,
-          "reasoning_effort": "high"
+          "max_completion_tokens": 4096
         },
         "vision": {
           "max_completion_tokens": 4096,
-          "reasoning_effort": "high",
           "vision_options": {
             "detail": "high"
           }

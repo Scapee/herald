@@ -417,7 +417,7 @@ func TestAuthConfigInvalidModeFromLoad(t *testing.T) {
 		"auth": {"auth_mode": "bad"},
 		"server": {"port": 8080},
 		"database": {"name": "herald", "user": "herald"},
-		"storage": {"connection_string": "conn"}
+		"storage": {"bucket_name": "docs"}
 	}`)
 	chdir(t, dir)
 
