@@ -14,7 +14,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      azurite:
+      minio:
         condition: service_healthy
     networks:
       - herald

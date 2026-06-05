@@ -11,6 +11,18 @@ services:
     volumes:
       - herald-minio:/data
     command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - herald
+
+networks:
+  herald:
+    name: herald
+    driver: bridge
 
 volumes:
   herald-minio:
