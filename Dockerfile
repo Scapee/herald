@@ -7,11 +7,9 @@ RUN bun run build
 
 FROM golang:1.26-alpine AS build
 WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
 COPY . .
 COPY --from=client /src/app/dist/ ./app/dist/
-RUN CGO_ENABLED=0 go build -o /herald ./cmd/server
+RUN CGO_ENABLED=0 go build -mod=vendor -o /herald ./cmd/server
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates curl imagemagick ghostscript
