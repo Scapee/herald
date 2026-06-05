@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/JaimeStill/herald/internal/config"
+	"github.com/JaimeStill/herald/internal/providers"
 	"github.com/JaimeStill/herald/pkg/database"
 	"github.com/JaimeStill/herald/pkg/lifecycle"
 	"github.com/JaimeStill/herald/pkg/storage"
@@ -31,6 +32,7 @@ func registerAgentBackends() {
 	registerOnce.Do(func() {
 		tauollama.Register()
 		tauopenai.Register()
+		providers.RegisterOpenAI()
 	})
 }
 
