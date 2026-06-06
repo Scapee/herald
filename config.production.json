@@ -1,6 +1,0 @@
-{
-  "server": {
-    "tls_cert_file": "/opt/herald/certs/herald.pem",
-    "tls_key_file": "/opt/herald/certs/herald.key"
-  }
-}
