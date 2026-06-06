@@ -9,6 +9,7 @@ services:
     volumes:
       - ./config.json:/app/config.json:ro
       - ./config.docker.json:/app/config.docker.json:ro
+      - /opt/herald/certs:/opt/herald/certs:ro
     ports:
       - "8080:8080"
     depends_on:
