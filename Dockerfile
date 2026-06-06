@@ -12,7 +12,8 @@ COPY --from=client /src/app/dist/ ./app/dist/
 RUN CGO_ENABLED=0 go build -mod=vendor -o /herald ./cmd/server
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates curl imagemagick ghostscript
+RUN apk upgrade --no-cache musl musl-utils && \
+    apk add --no-cache ca-certificates curl imagemagick ghostscript
 RUN addgroup -S herald && adduser -S herald -G herald
 COPY --from=build /herald /usr/local/bin/herald
 WORKDIR /app
