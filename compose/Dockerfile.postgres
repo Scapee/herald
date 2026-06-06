@@ -1,0 +1,5 @@
+FROM cgr.dev/chainguard/postgres:latest-dev
+
+# The -dev variant includes bash and the standard postgres entrypoint.
+# Files placed in /docker-entrypoint-initdb.d/ are executed once on first
+# initialization of a fresh data volume — SQL files via psql, .sh scripts via bash.
