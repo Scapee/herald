@@ -19,11 +19,17 @@ import (
 // graph (init → classify → enhance? → finalize), executes it, and extracts
 // the WorkflowResult from the final state.
 func Execute(ctx context.Context, rt *Runtime, documentID uuid.UUID, observer *StreamingObserver) (*WorkflowResult, error) {
+	rt.Logger.InfoContext(ctx, "workflow starting", "document_id", documentID)
+
 	tempDir, err := os.MkdirTemp("", "herald-classify-*")
 	if err != nil {
 		return nil, fmt.Errorf("create temp directory: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
+	rt.Logger.InfoContext(ctx, "temp dir created", "path", tempDir)
+	defer func() {
+		rt.Logger.InfoContext(ctx, "cleaning up temp dir", "path", tempDir)
+		os.RemoveAll(tempDir)
+	}()
 
 	graph, err := buildGraph(rt, observer)
 	if err != nil {
@@ -34,11 +40,14 @@ func Execute(ctx context.Context, rt *Runtime, documentID uuid.UUID, observer *S
 	initialState = initialState.Set(state.KeyDocumentID, documentID)
 	initialState = initialState.Set(state.KeyTempDir, tempDir)
 
+	rt.Logger.InfoContext(ctx, "executing graph", "document_id", documentID)
 	finalState, err := graph.Execute(ctx, initialState)
 	if err != nil {
+		rt.Logger.ErrorContext(ctx, "graph execution failed", "document_id", documentID, "error", err)
 		return nil, fmt.Errorf("execute graph: %w", err)
 	}
 
+	rt.Logger.InfoContext(ctx, "workflow complete", "document_id", documentID)
 	return extractResult(finalState)
 }
 
