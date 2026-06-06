@@ -13,6 +13,8 @@ const (
 	EnvServerReadTimeout     = "HERALD_SERVER_READ_TIMEOUT"
 	EnvServerWriteTimeout    = "HERALD_SERVER_WRITE_TIMEOUT"
 	EnvServerShutdownTimeout = "HERALD_SERVER_SHUTDOWN_TIMEOUT"
+	EnvServerTLSCertFile     = "HERALD_SERVER_TLS_CERT"
+	EnvServerTLSKeyFile      = "HERALD_SERVER_TLS_KEY"
 )
 
 // ServerConfig holds HTTP server parameters.
@@ -22,11 +24,18 @@ type ServerConfig struct {
 	ReadTimeout     string `json:"read_timeout"`
 	WriteTimeout    string `json:"write_timeout"`
 	ShutdownTimeout string `json:"shutdown_timeout"`
+	TLSCertFile     string `json:"tls_cert_file"`
+	TLSKeyFile      string `json:"tls_key_file"`
 }
 
 // Addr returns the host:port listen address.
 func (c *ServerConfig) Addr() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+// TLSEnabled reports whether both a cert and key file are configured.
+func (c *ServerConfig) TLSEnabled() bool {
+	return c.TLSCertFile != "" && c.TLSKeyFile != ""
 }
 
 // ReadTimeoutDuration returns ReadTimeout as a time.Duration.
@@ -71,6 +80,12 @@ func (c *ServerConfig) Merge(overlay *ServerConfig) {
 	if overlay.ShutdownTimeout != "" {
 		c.ShutdownTimeout = overlay.ShutdownTimeout
 	}
+	if overlay.TLSCertFile != "" {
+		c.TLSCertFile = overlay.TLSCertFile
+	}
+	if overlay.TLSKeyFile != "" {
+		c.TLSKeyFile = overlay.TLSKeyFile
+	}
 }
 
 func (c *ServerConfig) loadDefaults() {
@@ -109,6 +124,12 @@ func (c *ServerConfig) loadEnv() {
 	if v := os.Getenv(EnvServerShutdownTimeout); v != "" {
 		c.ShutdownTimeout = v
 	}
+	if v := os.Getenv(EnvServerTLSCertFile); v != "" {
+		c.TLSCertFile = v
+	}
+	if v := os.Getenv(EnvServerTLSKeyFile); v != "" {
+		c.TLSKeyFile = v
+	}
 }
 
 func (c *ServerConfig) validate() error {
@@ -123,6 +144,9 @@ func (c *ServerConfig) validate() error {
 	}
 	if _, err := time.ParseDuration(c.ShutdownTimeout); err != nil {
 		return fmt.Errorf("invalid shutdown_timeout: %w", err)
+	}
+	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
+		return fmt.Errorf("tls_cert_file and tls_key_file must both be set or both be empty")
 	}
 	return nil
 }
