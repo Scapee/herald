@@ -17,20 +17,27 @@ func InitNode(rt *Runtime) taustate.StateNode {
 		ctx context.Context,
 		s taustate.State,
 	) (taustate.State, error) {
+		rt.Logger.InfoContext(ctx, "init node: starting")
+
 		documentID, tempDir, err := extractInitState(s)
 		if err != nil {
 			return s, fmt.Errorf("init: %w", err)
 		}
+		rt.Logger.InfoContext(ctx, "init node: state extracted", "document_id", documentID, "temp_dir", tempDir)
 
 		doc, err := rt.Documents.Find(ctx, documentID)
 		if err != nil {
+			rt.Logger.ErrorContext(ctx, "init node: document lookup failed", "document_id", documentID, "error", err)
 			return s, fmt.Errorf("init: %w: %w", ErrDocumentNotFound, err)
 		}
+		rt.Logger.InfoContext(ctx, "init node: document found", "document_id", documentID, "filename", doc.Filename, "content_type", doc.ContentType, "storage_key", doc.StorageKey)
 
 		handler, err := rt.Formats.Lookup(doc.ContentType)
 		if err != nil {
+			rt.Logger.ErrorContext(ctx, "init node: format lookup failed", "content_type", doc.ContentType, "error", err)
 			return s, fmt.Errorf("init: %w: %w", ErrRenderFailed, err)
 		}
+		rt.Logger.InfoContext(ctx, "init node: format handler resolved", "format", handler.ID())
 
 		src := &blobSource{
 			rt:          rt,
@@ -39,8 +46,10 @@ func InitNode(rt *Runtime) taustate.StateNode {
 			filename:    doc.Filename,
 		}
 
+		rt.Logger.InfoContext(ctx, "init node: extracting pages from blob")
 		pages, err := handler.Extract(ctx, src, tempDir)
 		if err != nil {
+			rt.Logger.ErrorContext(ctx, "init node: page extraction failed", "error", err)
 			return s, fmt.Errorf("init: %w: %w", ErrRenderFailed, err)
 		}
 
