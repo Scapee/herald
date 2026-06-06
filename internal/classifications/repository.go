@@ -130,7 +130,7 @@ func (r *repo) Classify(ctx context.Context, documentID uuid.UUID) (<-chan workf
 	go func() {
 		defer observer.Close()
 
-		result, err := workflow.Execute(ctx, r.rt, documentID, observer)
+		result, err := workflow.Execute(context.Background(), r.rt, documentID, observer)
 		if err != nil {
 			observer.SendError(fmt.Errorf("classify document: %s: %w", documentID, err), "")
 			return
