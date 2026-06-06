@@ -19,5 +19,5 @@ WORKDIR /app
 USER herald
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
-  CMD ["curl", "-f", "http://localhost:8080/healthz"]
+  CMD ["curl", "-fk", "https://localhost:8080/healthz"]
 ENTRYPOINT ["herald"]
