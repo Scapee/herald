@@ -1,8 +1,6 @@
 services:
   postgres:
-    build:
-      context: ..
-      dockerfile: compose/Dockerfile.postgres
+    image: cgr.dev/chainguard/postgres:latest-dev
     container_name: herald-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-herald}
