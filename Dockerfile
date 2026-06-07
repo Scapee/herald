@@ -12,12 +12,13 @@ COPY --from=client /src/app/dist/ ./app/dist/
 RUN CGO_ENABLED=0 go build -mod=vendor -o /herald ./cmd/server
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates curl imagemagick ghostscript
+RUN apk upgrade --no-cache musl musl-utils && \
+    apk add --no-cache ca-certificates curl imagemagick ghostscript
 RUN addgroup -S herald && adduser -S herald -G herald
 COPY --from=build /herald /usr/local/bin/herald
 WORKDIR /app
 USER herald
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
-  CMD ["curl", "-f", "http://localhost:8080/healthz"]
+  CMD ["curl", "-fk", "https://localhost:8080/healthz"]
 ENTRYPOINT ["herald"]
