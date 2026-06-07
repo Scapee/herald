@@ -12,8 +12,6 @@ import (
 	"github.com/JaimeStill/herald/pkg/storage"
 )
 
-const azuriteConnString = "DefaultEndpointsProtocol=http;AccountName=heraldstore;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/heraldstore;"
-
 func validConfig() *config.Config {
 	return &config.Config{
 		Auth: auth.Config{Mode: auth.ModeNone},
@@ -42,8 +40,10 @@ func validConfig() *config.Config {
 			ConnTimeout:     "5s",
 		},
 		Storage: storage.Config{
-			ContainerName:    "documents",
-			ConnectionString: azuriteConnString,
+			Endpoint:   "localhost:9000",
+			AccessKey:  "heraldstore",
+			SecretKey:  "heraldstorepass",
+			BucketName: "documents",
 		},
 		Version: "0.1.0",
 	}
@@ -106,12 +106,3 @@ func TestNewDatabaseConnection(t *testing.T) {
 	conn.Close()
 }
 
-func TestNewInvalidStorageConfig(t *testing.T) {
-	cfg := validConfig()
-	cfg.Storage.ConnectionString = "not-a-connection-string"
-
-	_, err := infrastructure.New(cfg)
-	if err == nil {
-		t.Fatal("expected error for invalid storage connection string")
-	}
-}

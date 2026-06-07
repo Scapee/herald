@@ -32,12 +32,17 @@ type pageResponse struct {
 // document-level classification synthesis is deferred to the finalize node.
 func ClassifyNode(rt *Runtime) taustate.StateNode {
 	return taustate.NewFunctionNode(func(ctx context.Context, s taustate.State) (taustate.State, error) {
+		rt.Logger.InfoContext(ctx, "classify node: starting")
+
 		classState, err := extractClassState(s)
 		if err != nil {
+			rt.Logger.ErrorContext(ctx, "classify node: state extraction failed", "error", err)
 			return s, fmt.Errorf("classify: %w", err)
 		}
+		rt.Logger.InfoContext(ctx, "classify node: state extracted", "page_count", len(classState.Pages))
 
 		if err := classifyPages(ctx, rt, classState); err != nil {
+			rt.Logger.ErrorContext(ctx, "classify node: classifyPages failed", "error", err)
 			return s, fmt.Errorf("classify: %w", err)
 		}
 
@@ -66,30 +71,40 @@ func extractClassState(s taustate.State) (*state.ClassificationState, error) {
 }
 
 func classifyPages(ctx context.Context, rt *Runtime, cs *state.ClassificationState) error {
+	rt.Logger.InfoContext(ctx, "classify: composing prompt")
 	prompt, err := ComposePrompt(ctx, rt.Prompts, prompts.StageClassify, nil)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrClassifyFailed, err)
 	}
+	rt.Logger.InfoContext(ctx, "classify: prompt composed", "prompt_len", len(prompt))
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(core.WorkerCount(len(cs.Pages)))
+	rt.Logger.InfoContext(ctx, "classify: starting page workers", "page_count", len(cs.Pages), "worker_limit", core.WorkerCount(len(cs.Pages)))
 
 	for i := range cs.Pages {
 		g.Go(func() error {
 			if gctx.Err() != nil {
+				rt.Logger.WarnContext(gctx, "classify: context already canceled before page start", "page", i+1, "error", gctx.Err())
 				return gctx.Err()
 			}
 
+			rt.Logger.InfoContext(gctx, "classify: creating agent", "page", i+1)
 			a, err := rt.NewAgent(gctx)
 			if err != nil {
+				rt.Logger.ErrorContext(gctx, "classify: agent creation failed", "page", i+1, "error", err)
 				return fmt.Errorf("page %d: create agent: %w", i+1, err)
 			}
+			rt.Logger.InfoContext(gctx, "classify: agent created", "page", i+1)
 
 			imgData, err := readPageImage(cs.Pages[i].ImagePath)
 			if err != nil {
+				rt.Logger.ErrorContext(gctx, "classify: read image failed", "page", i+1, "path", cs.Pages[i].ImagePath, "error", err)
 				return fmt.Errorf("page %d: %w", i+1, err)
 			}
+			rt.Logger.InfoContext(gctx, "classify: image loaded", "page", i+1, "image_path", cs.Pages[i].ImagePath, "image_bytes", len(imgData))
 
+			rt.Logger.InfoContext(gctx, "classify: sending vision request", "page", i+1)
 			resp, err := a.Vision(
 				gctx,
 				[]protocol.Message{protocol.UserMessage(prompt)},
@@ -97,8 +112,10 @@ func classifyPages(ctx context.Context, rt *Runtime, cs *state.ClassificationSta
 			)
 
 			if err != nil {
+				rt.Logger.ErrorContext(gctx, "classify: vision call failed", "page", i+1, "error", err, "context_err", gctx.Err())
 				return fmt.Errorf("page %d: vision call: %w", i+1, err)
 			}
+			rt.Logger.InfoContext(gctx, "classify: vision response received", "page", i+1)
 
 			parsed, err := core.Parse[pageResponse](resp.Text())
 			if err != nil {
@@ -128,9 +145,11 @@ func classifyPages(ctx context.Context, rt *Runtime, cs *state.ClassificationSta
 	}
 
 	if err := g.Wait(); err != nil {
+		rt.Logger.ErrorContext(ctx, "classify: worker group failed", "error", err, "context_err", ctx.Err())
 		return fmt.Errorf("%w: %w", ErrClassifyFailed, err)
 	}
 
+	rt.Logger.InfoContext(ctx, "classify: all pages complete")
 	return nil
 }
 

@@ -6,20 +6,24 @@ import (
 	"strconv"
 )
 
-// Config holds Azure Blob Storage connection parameters.
+// Config holds MinIO connection parameters.
 type Config struct {
-	ContainerName    string `json:"container_name"`
-	ConnectionString string `json:"connection_string"`
-	ServiceURL       string `json:"service_url"`
-	MaxListSize      int32  `json:"max_list_size"`
+	Endpoint    string `json:"endpoint"`
+	AccessKey   string `json:"access_key"`
+	SecretKey   string `json:"secret_key"`
+	UseSSL      bool   `json:"use_ssl"`
+	BucketName  string `json:"bucket_name"`
+	MaxListSize int32  `json:"max_list_size"`
 }
 
 // Env maps config fields to environment variable names for override injection.
 type Env struct {
-	ContainerName    string
-	ConnectionString string
-	ServiceURL       string
-	MaxListSize      string
+	Endpoint    string
+	AccessKey   string
+	SecretKey   string
+	UseSSL      string
+	BucketName  string
+	MaxListSize string
 }
 
 // Finalize applies defaults, environment variable overrides, and validation.
@@ -33,24 +37,29 @@ func (c *Config) Finalize(env *Env) error {
 
 // Merge overwrites non-zero fields from overlay.
 func (c *Config) Merge(overlay *Config) {
-	if overlay.ContainerName != "" {
-		c.ContainerName = overlay.ContainerName
+	if overlay.Endpoint != "" {
+		c.Endpoint = overlay.Endpoint
 	}
-	if overlay.ConnectionString != "" {
-		c.ConnectionString = overlay.ConnectionString
+	if overlay.AccessKey != "" {
+		c.AccessKey = overlay.AccessKey
 	}
-	if overlay.ServiceURL != "" {
-		c.ServiceURL = overlay.ServiceURL
+	if overlay.SecretKey != "" {
+		c.SecretKey = overlay.SecretKey
+	}
+	if overlay.UseSSL {
+		c.UseSSL = true
+	}
+	if overlay.BucketName != "" {
+		c.BucketName = overlay.BucketName
 	}
 	if overlay.MaxListSize != 0 {
 		c.MaxListSize = overlay.MaxListSize
 	}
-
 }
 
 func (c *Config) loadDefaults() {
-	if c.ContainerName == "" {
-		c.ContainerName = "documents"
+	if c.BucketName == "" {
+		c.BucketName = "documents"
 	}
 	if c.MaxListSize == 0 {
 		c.MaxListSize = 50
@@ -61,19 +70,31 @@ func (c *Config) loadDefaults() {
 }
 
 func (c *Config) loadEnv(env *Env) {
-	if env.ContainerName != "" {
-		if v := os.Getenv(env.ContainerName); v != "" {
-			c.ContainerName = v
+	if env.Endpoint != "" {
+		if v := os.Getenv(env.Endpoint); v != "" {
+			c.Endpoint = v
 		}
 	}
-	if env.ConnectionString != "" {
-		if v := os.Getenv(env.ConnectionString); v != "" {
-			c.ConnectionString = v
+	if env.AccessKey != "" {
+		if v := os.Getenv(env.AccessKey); v != "" {
+			c.AccessKey = v
 		}
 	}
-	if env.ServiceURL != "" {
-		if v := os.Getenv(env.ServiceURL); v != "" {
-			c.ServiceURL = v
+	if env.SecretKey != "" {
+		if v := os.Getenv(env.SecretKey); v != "" {
+			c.SecretKey = v
+		}
+	}
+	if env.UseSSL != "" {
+		if v := os.Getenv(env.UseSSL); v != "" {
+			if b, err := strconv.ParseBool(v); err == nil {
+				c.UseSSL = b
+			}
+		}
+	}
+	if env.BucketName != "" {
+		if v := os.Getenv(env.BucketName); v != "" {
+			c.BucketName = v
 		}
 	}
 	if env.MaxListSize != "" {
@@ -86,8 +107,8 @@ func (c *Config) loadEnv(env *Env) {
 }
 
 func (c *Config) validate() error {
-	if c.ContainerName == "" {
-		return fmt.Errorf("container_name required")
+	if c.BucketName == "" {
+		return fmt.Errorf("bucket_name required")
 	}
 	return nil
 }

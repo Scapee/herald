@@ -9,9 +9,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-
 	"github.com/JaimeStill/herald/internal/config"
+	"github.com/JaimeStill/herald/internal/providers"
 	"github.com/JaimeStill/herald/pkg/database"
 	"github.com/JaimeStill/herald/pkg/lifecycle"
 	"github.com/JaimeStill/herald/pkg/storage"
@@ -21,7 +20,6 @@ import (
 
 	tauopenai "github.com/tailored-agentic-units/format/openai"
 	tauconfig "github.com/tailored-agentic-units/protocol/config"
-	tauazure "github.com/tailored-agentic-units/provider/azure"
 	tauollama "github.com/tailored-agentic-units/provider/ollama"
 )
 
@@ -32,9 +30,9 @@ var registerOnce sync.Once
 // (notably from tests) are safe and idempotent.
 func registerAgentBackends() {
 	registerOnce.Do(func() {
-		tauazure.Register()
 		tauollama.Register()
 		tauopenai.Register()
+		providers.RegisterOpenAI()
 	})
 }
 
@@ -42,21 +40,19 @@ func registerAgentBackends() {
 // It provides a single point of initialization for lifecycle coordination,
 // logging, database access, file storage, and agent configuration.
 type Infrastructure struct {
-	Lifecycle  *lifecycle.Coordinator
-	Logger     *slog.Logger
-	Database   database.System
-	Storage    storage.System
-	Agent      tauconfig.AgentConfig
-	Credential azcore.TokenCredential
-	NewAgent   func(ctx context.Context) (agent.Agent, error)
+	Lifecycle *lifecycle.Coordinator
+	Logger    *slog.Logger
+	Database  database.System
+	Storage   storage.System
+	Agent     tauconfig.AgentConfig
+	NewAgent  func(ctx context.Context) (agent.Agent, error)
 }
 
 // New creates an Infrastructure from the application configuration.
 // It initializes all systems but does not start them; call Start separately.
 // Agent configuration is validated by constructing a single agent via
 // provider.Create + format.Create + agent.New, which exercises the full
-// tau pipeline (factory lookup, option extraction, credential wiring) before
-// any request is served.
+// tau pipeline (factory lookup, option extraction) before any request is served.
 func New(cfg *config.Config) (*Infrastructure, error) {
 	registerAgentBackends()
 
@@ -65,14 +61,14 @@ func New(cfg *config.Config) (*Infrastructure, error) {
 		Level: cfg.LogLevel.SlogLevel(),
 	}))
 
-	cred, err := cfg.Auth.TokenCredential()
+	db, err := database.New(&cfg.Database, logger)
 	if err != nil {
-		return nil, fmt.Errorf("credential init failed: %w", err)
+		return nil, fmt.Errorf("database init failed: %w", err)
 	}
 
-	db, store, err := initSystems(cfg, cred, logger)
+	store, err := storage.New(&cfg.Storage, logger)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("storage init failed: %w", err)
 	}
 
 	agentCfg := cfg.Agent
@@ -93,13 +89,12 @@ func New(cfg *config.Config) (*Infrastructure, error) {
 	}
 
 	return &Infrastructure{
-		Lifecycle:  lc,
-		Logger:     logger,
-		Database:   db,
-		Storage:    store,
-		Agent:      cfg.Agent,
-		Credential: cred,
-		NewAgent:   newAgent,
+		Lifecycle: lc,
+		Logger:    logger,
+		Database:  db,
+		Storage:   store,
+		Agent:     cfg.Agent,
+		NewAgent:  newAgent,
 	}, nil
 }
 
@@ -113,44 +108,4 @@ func (i *Infrastructure) Start() error {
 		return fmt.Errorf("storage start failed: %w", err)
 	}
 	return nil
-}
-
-func initSystems(
-	cfg *config.Config,
-	cred azcore.TokenCredential,
-	logger *slog.Logger,
-) (database.System, storage.System, error) {
-	if cred != nil && cfg.Auth.ManagedIdentity {
-		return initManagedSystems(cfg, cred, logger)
-	}
-
-	db, err := database.New(&cfg.Database, logger)
-	if err != nil {
-		return nil, nil, fmt.Errorf("database init failed: %w", err)
-	}
-
-	store, err := storage.New(&cfg.Storage, logger)
-	if err != nil {
-		return nil, nil, fmt.Errorf("storage init failed: %w", err)
-	}
-
-	return db, store, nil
-}
-
-func initManagedSystems(
-	cfg *config.Config,
-	cred azcore.TokenCredential,
-	logger *slog.Logger,
-) (database.System, storage.System, error) {
-	db, err := database.NewWithCredential(&cfg.Database, cred, logger)
-	if err != nil {
-		return nil, nil, fmt.Errorf("database credential init failed: %w", err)
-	}
-
-	store, err := storage.NewWithCredential(&cfg.Storage, cred, logger)
-	if err != nil {
-		return nil, nil, fmt.Errorf("storage credential init failed: %w", err)
-	}
-
-	return db, store, nil
 }

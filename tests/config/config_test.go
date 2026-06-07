@@ -34,8 +34,10 @@ const baseConfig = `{
     "conn_timeout": "5s"
   },
   "storage": {
-    "container_name": "documents",
-    "connection_string": "DefaultEndpointsProtocol=http;AccountName=heraldstore;AccountKey=key;BlobEndpoint=http://127.0.0.1:10000/heraldstore;"
+    "endpoint": "localhost:9000",
+    "access_key": "heraldstore",
+    "secret_key": "heraldstorepass",
+    "bucket_name": "documents"
   },
   "api": {
     "base_path": "/api",
@@ -81,7 +83,7 @@ const minimalConfig = `{
     "user": "herald"
   },
   "storage": {
-    "connection_string": "conn"
+    "bucket_name": "docs"
   },
   "api": {
     "base_path": "/api"
@@ -123,8 +125,8 @@ func TestLoad(t *testing.T) {
 	if cfg.Database.Host != "localhost" {
 		t.Errorf("db host: got %s, want localhost", cfg.Database.Host)
 	}
-	if cfg.Storage.ContainerName != "documents" {
-		t.Errorf("storage container: got %s, want documents", cfg.Storage.ContainerName)
+	if cfg.Storage.BucketName != "documents" {
+		t.Errorf("storage bucket: got %s, want documents", cfg.Storage.BucketName)
 	}
 	if cfg.API.BasePath != "/api" {
 		t.Errorf("api base_path: got %s, want /api", cfg.API.BasePath)
@@ -188,7 +190,7 @@ func TestLoadNoConfigFile(t *testing.T) {
 
 	t.Setenv("HERALD_DB_NAME", "testdb")
 	t.Setenv("HERALD_DB_USER", "testuser")
-	t.Setenv("HERALD_STORAGE_CONNECTION_STRING", "conn")
+	t.Setenv("HERALD_STORAGE_ENDPOINT", "localhost:9000")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -201,8 +203,8 @@ func TestLoadNoConfigFile(t *testing.T) {
 	if cfg.Database.Name != "testdb" {
 		t.Errorf("db name from env: got %s, want testdb", cfg.Database.Name)
 	}
-	if cfg.Storage.ConnectionString != "conn" {
-		t.Errorf("storage conn from env: got %s, want conn", cfg.Storage.ConnectionString)
+	if cfg.Storage.Endpoint != "localhost:9000" {
+		t.Errorf("storage endpoint from env: got %s, want localhost:9000", cfg.Storage.Endpoint)
 	}
 }
 
@@ -388,7 +390,7 @@ func TestServerValidation(t *testing.T) {
 				"shutdown_timeout": "30s",
 				"server": {"port": 99999},
 				"database": {"name": "herald", "user": "herald"},
-				"storage": {"connection_string": "conn"}
+				"storage": {"bucket_name": "docs"}
 			}`,
 			wantErr: "invalid port",
 		},
@@ -398,7 +400,7 @@ func TestServerValidation(t *testing.T) {
 				"shutdown_timeout": "30s",
 				"server": {"read_timeout": "bad"},
 				"database": {"name": "herald", "user": "herald"},
-				"storage": {"connection_string": "conn"}
+				"storage": {"bucket_name": "docs"}
 			}`,
 			wantErr: "invalid read_timeout",
 		},
@@ -641,7 +643,7 @@ func TestAgentCapabilitiesFromConfigPreservedWhenEnvUnset(t *testing.T) {
 	const capConfig = `{
   "shutdown_timeout": "30s",
   "database": {"name": "herald", "user": "herald"},
-  "storage": {"connection_string": "conn"},
+  "storage": {"bucket_name": "docs"},
   "api": {"base_path": "/api"},
   "agent": {
     "name": "test-agent",
@@ -692,7 +694,7 @@ func TestLogLevelFromConfig(t *testing.T) {
   "log_level": "warn",
   "server": {"port": 8080},
   "database": {"name": "herald", "user": "herald"},
-  "storage": {"connection_string": "conn"},
+  "storage": {"bucket_name": "docs"},
   "api": {"base_path": "/api"}
 }`
 	dir := t.TempDir()

@@ -12,32 +12,25 @@ import (
 	"github.com/JaimeStill/herald/pkg/storage"
 )
 
-const azuriteConnString = "DefaultEndpointsProtocol=http;AccountName=heraldstore;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/heraldstore;"
-
-func TestNewReturnsSystem(t *testing.T) {
+func newTestSystem(t *testing.T) storage.System {
+	t.Helper()
 	cfg := &storage.Config{
-		ContainerName:    "documents",
-		ConnectionString: azuriteConnString,
+		Endpoint:   "localhost:9000",
+		AccessKey:  "heraldstore",
+		SecretKey:  "heraldstorepass",
+		BucketName: "documents",
 	}
-
 	sys, err := storage.New(cfg, slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	if sys == nil {
-		t.Fatal("New() returned nil system")
-	}
+	return sys
 }
 
-func TestNewInvalidConnectionString(t *testing.T) {
-	cfg := &storage.Config{
-		ContainerName:    "documents",
-		ConnectionString: "not-a-connection-string",
-	}
-
-	_, err := storage.New(cfg, slog.Default())
-	if err == nil {
-		t.Fatal("expected error for invalid connection string, got nil")
+func TestNewReturnsSystem(t *testing.T) {
+	sys := newTestSystem(t)
+	if sys == nil {
+		t.Fatal("New() returned nil system")
 	}
 }
 
@@ -78,9 +71,9 @@ func TestSentinelErrors(t *testing.T) {
 
 func TestMapHTTPStatus(t *testing.T) {
 	tests := []struct {
-		name   string
-		err    error
-		want   int
+		name string
+		err  error
+		want int
 	}{
 		{
 			name: "ErrNotFound maps to 404",
@@ -191,15 +184,7 @@ func TestParseMaxResults(t *testing.T) {
 }
 
 func TestKeyValidation(t *testing.T) {
-	cfg := &storage.Config{
-		ContainerName:    "documents",
-		ConnectionString: azuriteConnString,
-	}
-
-	sys, err := storage.New(cfg, slog.Default())
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	sys := newTestSystem(t)
 
 	tests := []struct {
 		name    string
